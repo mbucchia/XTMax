@@ -59,7 +59,7 @@ alter_map	LABEL	DWORD
 alter_map_off	DW	0
 alter_map_seg	DW	0
 page_ptr	DW	alloc_page	;allocate page buffer pointer.
-page_frame_seg	DW	0E000h		;Default physical page frame address
+page_frame_seg	DW	0D000h		;Default physical page frame address
 total_pages	DW	PAGE_MAX	;total logical page count
 un_alloc_pages	DW	PAGE_MAX	;unallocate logical page count
 handle_count	DW	0		;EMM handle used count
@@ -72,7 +72,7 @@ map_table	LABEL	phys_page_struct
 ;
 ;	handle status flag buffer pointers (handle)
 ;
-alloc_page_count LABEL	BYTE
+alloc_page_count LABEL	WORD
 ;
 ;	allocate page count buffer pointers (handle)
 ;
@@ -466,8 +466,8 @@ set_pages_map	PROC	NEAR
 		MOV	CX,PHYS_PAGES
 set_pages_map2:
 		MOV	DX,CS:[DI].phys_page_port
-		MOV	AL,CS:[DI].log_page_data
-		OUT	DX,AL                   ;mapping physical pages...
+		MOV	AX,CS:[DI].log_page_data
+		OUT	DX,AX                   ;mapping physical pages...
 		ADD	DI,SIZE phys_page_struct
 		LOOP	set_pages_map2
 		POP	DI DX CX AX
@@ -486,10 +486,10 @@ reset_phys_page	PROC	NEAR
 		MUL	CL
 		ADD	DI,AX
 		MOV	DX,CS:[DI].phys_page_port
-		MOV	AL,DIS_EMS
-		OUT	DX,AL
+		MOV	AX,DIS_EMS
+		OUT	DX,AX
 		MOV	CS:[DI].emm_handle2,UNMAP
-		MOV	CS:[DI].log_page_data,AL;logical page no.
+		MOV	CS:[DI].log_page_data,AX;logical page no.
 		POP	DI DX CX AX
 		RET
 reset_phys_page	ENDP
@@ -595,7 +595,7 @@ f44:
 		MOV	byte ptr [SI].handle_flag,1;handle active flag set
 		INC	handle_count		;used EMM handle count up
 		SUB	un_alloc_pages,BX	;unallocated page - BX
-		MOV	[SI].alloc_page_count,bl;EMM handle used page count set
+		MOV	[SI].alloc_page_count,bx;EMM handle used page count set
 		MOV	[SI].back_address,0	;backup address clear
 		MOV	DI,page_ptr
 		MOV	[SI].page_address,DI	;set page buffer pointer
@@ -651,7 +651,7 @@ func5:						;v0.6....
 		ADD	DI,AX
 		CMP	BX,UNMAP		;unmap ?
 		JZ	f57
-		CMP	bl,[SI].alloc_page_count;logical page no. OK ?
+		CMP	bx,[SI].alloc_page_count;logical page no. OK ?
 		jnb	f53
 		SHL	BX,1
 		ADD	BX,[SI].page_address
@@ -660,13 +660,13 @@ func5:						;v0.6....
 f58:
 		CMP	DX,[DI]			;same handle ?
 		JNZ	f54
-		CMP	AL,[DI].log_page_data	;same page no. ?
+		CMP	AX,[DI].log_page_data	;same page no. ?
 		JZ	f56
 f54:
 		MOV	[DI],DX			;set handle
-		MOV	[DI].log_page_data,AL	;set logical page no. data
+		MOV	[DI].log_page_data,AX	;set logical page no. data
 		MOV	DX,[DI].phys_page_port
-		OUT	DX,AL
+		OUT	DX,AX
 f56:
 		JMP	noerr			;exit
 f57:
@@ -700,8 +700,7 @@ func6:
 		JZ	f5a
 		CMP	[BX].back_address,0	;backup used?
 		JNZ	f63
-		MOV	cl,[BX].alloc_page_count
-                xor     ch,ch
+		MOV	cx,[BX].alloc_page_count
 		JCXZ	f6c			;page = 0 ?
 		add	un_alloc_pages,cx	;add unallocated pages
 		MOV	DI,[BX].page_address	;deallocate logical page...
@@ -720,16 +719,14 @@ f65:
 		JCXZ	f62
 		REPZ	MOVSW
 f62:
-		MOV	cl,[BX].alloc_page_count
-                xor     ch,ch
+		MOV	cx,[BX].alloc_page_count
 		JCXZ	f68
 		MOV	AX,UNALLOC
 		REPZ	STOSW
 f68:
 		XOR	DI,DI			;change page address....
 		MOV	SI,[BX].page_address	;get page address.
-		MOV	al,[BX].alloc_page_count;get allocated page count.
-                xor     ah,ah
+		MOV	ax,[BX].alloc_page_count;get allocated page count.
 		SHL	AX,1
 		MOV	CX,handle_count
 		JMP	short f66
@@ -924,8 +921,7 @@ func13:						;v0.6....
 		SHL	SI,1
 		CMP	byte ptr [SI].handle_flag,1;handle OK ?
 		jne	f131
-		MOV	bl,[SI].alloc_page_count
-                xor     bh,bh
+		MOV	bx,[SI].alloc_page_count
 		jmp	f121			;exit
 f131:
 		JMP	err83			;error exit
@@ -948,8 +944,7 @@ f142:
 		JZ	f141
 		MOV	AX,DX
 		STOSW
-		MOV	al,[SI].alloc_page_count;v0.5
-                xor     ah,ah
+		MOV	ax,[SI].alloc_page_count;v0.5
 		STOSW
 		INC	BX
 f141:
@@ -1281,8 +1276,7 @@ func18:
 		je	f181
 		CMP	total_pages,BX		;request total size over ?
 		JC	f182			;yes
-		MOV	al,[SI].alloc_page_count;get page size to handle
-                xor     ah,ah
+		MOV	ax,[SI].alloc_page_count;get page size to handle
 		OR	BX,BX			;reallocate count = 0?
 		JNZ	f184
 		MOV	CX,AX
@@ -1333,8 +1327,7 @@ f18l:
 		MOV	AX,BX
 		SHL	AX,1
 		ADD	DI,AX
-		MOV	al,[SI].alloc_page_count
-                xor     ah,ah
+		MOV	ax,[SI].alloc_page_count
 		MOV	SI,[SI].page_address
 		SHL	AX,1
 		ADD	SI,AX
@@ -1350,9 +1343,8 @@ f18e:
 		REPZ	STOSW
 f18f:
 		POP	SI
-		MOV	al,[SI].alloc_page_count
-                xor     ah,ah
-		MOV	[SI].alloc_page_count,bl;set EMM handle used page count
+		MOV	ax,[SI].alloc_page_count
+		MOV	[SI].alloc_page_count,bx;set EMM handle used page count
 		XOR	DI,DI			;change other handle page add-
 		SUB	AX,BX			;ress....
 		SHL	AX,1
@@ -1376,8 +1368,7 @@ f18m:
 f18o:
 		JMP	noerr			;exit.
 f187:
-		MOV	al,[SI].alloc_page_count
-                xor     ah,ah
+		MOV	ax,[SI].alloc_page_count
 		MOV	[BP].bx_save,AX
 		JMP	err88			;error exit
 f186:
@@ -1396,8 +1387,7 @@ f18p:
 		MOV	AX,CX
 		SHL	AX,1
 		ADD	DI,AX
-		MOV	al,[SI].alloc_page_count
-                xor     ah,ah
+		MOV	ax,[SI].alloc_page_count
 		SHL	AX,1
 		ADD	AX,[SI].page_address
 		PUSH	CX
@@ -1416,8 +1406,7 @@ f18q:
 		POP	SI
 		CLD
 		MOV	DI,[SI].page_address	;allocate add pages...
-		MOV	al,[SI].alloc_page_count
-                xor     ah,ah
+		MOV	ax,[SI].alloc_page_count
 		MOV	CX,BX
 		SUB	CX,AX
 		SHL	AX,1
@@ -1439,9 +1428,8 @@ f188:
 		STOSW
 		LOOP	f189
 		POP	SI
-		MOV	al,[SI].alloc_page_count
-                xor     ah,ah
-		MOV	[SI].alloc_page_count,bl;set EMM handle used page count
+		MOV	ax,[SI].alloc_page_count
+		MOV	[SI].alloc_page_count,bx;set EMM handle used page count
 		XOR	DI,DI			;change other handle page add-
 		XCHG	AX,BX			;ress....
 		SUB	AX,BX
@@ -2781,7 +2769,7 @@ check_log_page 	PROC	NEAR
 		PUSH	CX SI
 		MOV	SI,DX
 		SHL	SI,1
-		CMP	bl,CS:[SI].alloc_page_count
+		CMP	bx,CS:[SI].alloc_page_count
 		jnb	check_log_page2
 		MOV	SI,CS:[SI].page_address
 		MOV	AX,BX
@@ -2837,11 +2825,10 @@ set_phys_page	PROC	NEAR
 		PUSH	DX
 		MOV	DX,CS:[DI].phys_page_port
 		MOV	AX,BX
-; JJP           OR      AL,80h
-		OUT	DX,AL
+		OUT	DX,AX
 		POP	DX
 		MOV	CS:[DI].emm_handle2,DX	;handle
-		MOV	CS:[DI].log_page_data,AL;logical page no.
+		MOV	CS:[DI].log_page_data,AX;logical page no.
 		POP	DI DX CX AX
 		RET
 set_phys_page	ENDP
@@ -3007,7 +2994,7 @@ getpr6:
 		JNZ	getpr5
 		INC	DI
 		CALL	ascbin1		;change data ascii -> binary.
-		MOV	pageofs,al
+		MOV	pageofs,ax
 		JMP	getpr5
 getpr7:
 		CMP	AL,'q'		;set quiet mode
@@ -3105,10 +3092,9 @@ ramch14:
 		ADD	DI,SIZE phys_page_struct
 		ADD	SI,0400H
 		MOV	DX,BX			;disable physical pages ---
-		MOV	AL,DIS_EMS
-		OUT	DX,AL
-; JJP		ADD	BX,4000h
-		INC	BX			; lo-tech cards registers are sequential from base address
+		MOV	AX,DIS_EMS
+		OUT	DX,AX
+		ADD BX, 2			;each port is a word
 		LOOP	ramch14
 		MOV	SI,OFFSET pagemsg	;display page test msg..
 		CALL	strdsp
@@ -3118,19 +3104,18 @@ ramch14:
 		OUT	I8042+1,AL
 		MOV	DI,OFFSET log_page
 		MOV	DX,emsio
-		MOV	AL,pageofs		;get EMS logical page start no.
-                xor     ah,ah
+		MOV	AX,pageofs		;get EMS logical page start no.
 		MOV	CX,PAGE_MAX
                 sub     cx,ax
                 jng     ramch16
-                mov     ah,al
 		XOR	BX,BX
 ramch9:
 		PUSH	CX
-                MOV     AL,AH
-; JJP           OR      AL,80h
-		OUT	DX,AL
+		OUT		DX,AX
+		PUSH	DX
+		MOV		DX, AX
 		CALL	imgchk			; checks the page is RAM
+		POP		DX
 		jc	ramch17
                 test    byte ptr sysflg,8       ;supress memory test
                 jne     ramch2
@@ -3154,13 +3139,13 @@ ramch17:
 		ADD	DI,LOG_SIZE
 ramch8:
 		POP	CX
-		INC	AH
+		INC	AX
 		LOOP	ramch9
 ramch16:
 		MOV	total_pages,BX
 		MOV	un_alloc_pages,BX
-		MOV	AL,DIS_EMS
-		OUT	DX,AL
+		MOV	AX,DIS_EMS
+		OUT	DX,AX
 		IN	AL,I8042+1		;enable system memory parity..
 		AND	AL,0FBH
 		or	AL,1
@@ -3185,14 +3170,13 @@ imgchk		PROC	NEAR
 		PUSH	AX CX SI DI DS
 		PUSH	CS			;set ES <- CS..
 		POP	ES
-                test    ah,3
+		test	dx,3
                 jnz     imgchk2
 		IN	AL,I8042+1
 		or	AL,2
 		OUT	I8042+1,AL
 imgchk2:
-		MOV	AL,AH
-                CBW
+		MOV	AX,DX
 		MOV	DI,OFFSET tstpage
 		CALL	dbinasc			;change binary -> ascii.
 		MOV	SI,OFFSET tstpage	;display message..
@@ -3557,9 +3541,12 @@ info:
 ;	EMM driver initial routine work data area
 ;--------------------------------------------------------------------
 start_msg       db      CR,LF
-                DB	'LTEMM: Lo-tech EMM Driver for XTMax '
-msg_ver         db      'r01'
-		DB	CR,LF,'$'
+                DB	'XTEMM: EMM Driver for XTMax r02',CR,LF
+                db	'     Based on Lo-tech EMM Driver for the Lo-tech 2MB EMS board..',CR,LF
+                db	'     Based on original works Copyright (c) 1988, Alex Tsourikov.',CR,LF
+                db	'     All rights reserved.',CR,LF
+                db	'Using EMS '
+msg_ver         db  '4.0',CR,LF,'$'
 install_msg	label   byte
 page_msg	DB	'Page frame specification: Frame Segment at '
 segadr		DB	'0000',CR,LF
@@ -3582,7 +3569,7 @@ info_msg        db       CR,LF
                 db      'http://www.lo-tech.co.uk/wiki/2MB-EMS-Board',CR,LF
                 db      'Syntax:    DEVICE=LTEMM.EXE [/switches]',CR,LF
                 db       CR,LF
-                db      '  /p:nnnn - Page frame address(E000)',CR,LF
+                db      '  /p:nnnn - Page frame address(D000)',CR,LF
                 db      '  /i:nnn  - EMS i/o port base address(260)',CR,LF
                 db      '  /h:nnn  - Maximal number of handles(64)',CR,LF
                 db      '  /d:nn   - Depth of contest saves(5)',CR,LF
@@ -3593,7 +3580,7 @@ info_msg        db       CR,LF
                 db      '  /q      - Quiet mode',CR,LF
                 db       CR,LF
                 db      'Defaults in parentheses.',CR,LF,'$'
-pageofs		DB	0		;logical page no. offset data
+pageofs		DW	0		;logical page no. offset data
 sysflg		DB	0		;system option flag
 chkchr		DW	55AAH
 code		ENDS
