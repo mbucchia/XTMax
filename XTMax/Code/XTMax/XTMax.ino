@@ -63,6 +63,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "bootrom.h"
+
 
 // Teensy 4.1 pin assignments
 //
@@ -512,7 +514,7 @@ inline void Mem_Read_Cycle() {
       GPIO8_DR = sd_pin_outputs + MUX_DATA_n_HIGH + CHRDY_OE_n_HIGH + DATA_OE_n_HIGH;
     }
    
-   
+#if 0   
 /*
 XTMax_MEM_Response_Array
 - Array holds value 0,1,2
@@ -553,6 +555,17 @@ XTMax_MEM_Response_Array
      
       GPIO8_DR = sd_pin_outputs + MUX_DATA_n_HIGH + CHRDY_OE_n_HIGH + DATA_OE_n_HIGH;
     }
+  #endif
+    else if (isa_address>=BOOTROM_ADDR && isa_address<BOOTROM_ADDR+sizeof(BOOTROM)) {   // Boot ROM
+      isa_data_out = BOOTROM[isa_address-BOOTROM_ADDR];
+      GPIO7_DR = GPIO7_DATA_OUT_UNSCRAMBLE + MUX_ADDR_n_LOW  + CHRDY_OUT_LOW + trigger_out;
+      GPIO8_DR = sd_pin_outputs + MUX_DATA_n_HIGH + CHRDY_OE_n_HIGH + DATA_OE_n_LOW;
+
+      while ( (gpio9_int&0xF0) != 0xF0 ) { gpio9_int = GPIO9_DR; }  // Wait here until cycle is complete
+     
+      GPIO8_DR = sd_pin_outputs + MUX_DATA_n_HIGH + CHRDY_OE_n_HIGH + DATA_OE_n_HIGH;
+    }
+
     return;
 }
 
