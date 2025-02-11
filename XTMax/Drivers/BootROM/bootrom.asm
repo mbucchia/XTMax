@@ -11,6 +11,11 @@ cpu 8086    ; ensure we remain compatible with 8086
 ;%define DEBUG_IO
 ;%define EXTRA_DEBUG
 
+;
+; The base I/O port for the XTMAX SD Card.
+;
+%define XTMAX_IO_BASE       (0x280)
+
 
 %define FIXED_DISK_0        (0)
 %define FIXED_DISK_1        (1)
@@ -92,12 +97,12 @@ entry:
     je .test_v20
     jmp .support_string_io          ; we have an 80186/80188
 .test_v20:
-    push ax                         ; save results
-    xor al, al                      ; force ZF
-    mov al, 0x40                    ; multiplicand
-    mul al                          ; V20 doesn't affect ZF
-    pop ax                          ; restore results
-    jz .support_string_io           ; we have an V20
+    ;push ax                         ; save results
+    ;xor al, al                      ; force ZF
+    ;mov al, 0x40                    ; multiplicand
+    ;mul al                          ; V20 doesn't affect ZF
+    ;pop ax                          ; restore results
+    ;jz .support_string_io           ; we have an V20
     xor dl, dl
     jmp .store_string_io
 .support_string_io:
@@ -105,7 +110,7 @@ entry:
     mov ax, string_io_msg
     call print_string
 .store_string_io:
-    mov ax, 0x283           ; scratch register 0
+    mov ax, XTMAX_IO_BASE+3 ; scratch register 0
     xchg ax, dx
     out dx, al              ; save capability
 
@@ -121,13 +126,13 @@ entry:
     mov es, ax
 
     mov ax, es:[0x13*4+2]
-    mov dx, 0x284           ; scratch register 1-2
+    mov dx, XTMAX_IO_BASE+4 ; scratch register 1-2
     out dx, ax              ; save segment
     call print_hex
     mov ax, colon
     call print_string
     mov ax, es:[0x13*4]
-    mov dx, 0x286           ; scratch register 3-4
+    mov dx, XTMAX_IO_BASE+6 ; scratch register 3-4
     out dx, ax              ; save offset
     call print_hex
     mov ax, newline
@@ -232,14 +237,14 @@ int13h_entry:
 ; Simulate INT 13h with the original vector.
 ;
     pushf                       ; setup for iret below
-    mov dx, 0x284               ; scratch register 1-2
+    mov dx, XTMAX_IO_BASE+4     ; scratch register 1-2
 %ifndef AS_COM_PROGRAM
     in ax, dx
 %else
     mov ax, cs
 %endif
     push ax                     ; setup for iret below
-    mov dx, 0x286               ; scratch register 3-4
+    mov dx, XTMAX_IO_BASE+6     ; scratch register 3-4
 %ifndef AS_COM_PROGRAM
     in ax, dx
 %else
@@ -449,7 +454,7 @@ func_02_read_sector:
     xor ch, ch
     mov di, bx              ; setup use of stosw
 .assert_cs:
-    mov dx, 0x282           ; chip select port
+    mov dx, XTMAX_IO_BASE+2 ; chip select port
     mov al, 0               ; assert chip select
     out dx, al
 .cmd17:
@@ -468,23 +473,27 @@ func_02_read_sector:
     mov ax, wait_msg
     call print_string
 %endif
-    mov dx, 0x280           ; data port
-    mov cx, 50000           ; timeout (50ms)
-    jmp .receive_token_no_delay
+    mov dx, XTMAX_IO_BASE+15; timeout port
+    mov al, 10              ; 100 ms
+    out dx, al
 .receive_token:
-    call delay_us
-.receive_token_no_delay:
+    mov dx, XTMAX_IO_BASE+0 ; data port
     in al, dx
     cmp al, 0xfe
-    loopne .receive_token
-    jne .error
+    je .got_token
+    mov dx, XTMAX_IO_BASE+15; timeout port
+    in al, dx
+    test al, al
+    jnz .error
+    jmp .receive_token
+.got_token:
 %ifdef DEBUG_IO
     mov ax, sd_token_msg
     call print_string
 %endif
     mov cx, 256             ; block size (in words)
     push dx
-    mov dx, 0x283           ; scratch register 0
+    mov dx, XTMAX_IO_BASE+3 ; scratch register 0
     in al, dx
     pop dx
     test al, al             ; supports insw?
@@ -507,7 +516,7 @@ cpu 8086
     loop .cmd17
 .success:
 .deassert_cs1:
-    mov dx, 0x282           ; chip select port
+    mov dx, XTMAX_IO_BASE+2 ; chip select port
     mov al, 1               ; deassert chip select
     out dx, al
 .return1:
@@ -519,7 +528,7 @@ cpu 8086
     jmp succeeded
 .error:
 .deassert_cs2:
-    mov dx, 0x282           ; chip select port
+    mov dx, XTMAX_IO_BASE+2 ; chip select port
     mov al, 1               ; deassert chip select
     out dx, al
 .return2:
@@ -578,7 +587,7 @@ func_03_write_sector:
     mov ax, es
     mov ds, ax
 .assert_cs:
-    mov dx, 0x282           ; chip select port
+    mov dx, XTMAX_IO_BASE+2 ; chip select port
     mov al, 0               ; assert chip select
     out dx, al
 .cmd24:
@@ -593,13 +602,13 @@ func_03_write_sector:
     mov cl, 0x58            ; CMD24
     call send_sd_read_write_cmd
     jc .error
-    mov dx, 0x280           ; data port
+    mov dx, XTMAX_IO_BASE+0 ; data port
     mov al, 0xfe            ; send token
     out dx, al
     mov cx, 256             ; block size (in words)
     xchg di, si             ; save si (aka TEMP1)
     push dx
-    mov dx, 0x283           ; scratch register 0
+    mov dx, XTMAX_IO_BASE+3 ; scratch register 0
     in al, dx
     pop dx
     test al, al             ; supports outsw?
@@ -620,14 +629,20 @@ cpu 8086
     mov ax, wait_msg
     call print_string
 %endif
-    mov cx, 50000           ; timeout (50ms)
-    jmp .receive_status_no_delay
+    mov dx, XTMAX_IO_BASE+15; timeout port
+    mov al, 25              ; 250 ms
+    out dx, al
 .receive_status:
-    call delay_us
-.receive_status_no_delay:
+    mov dx, XTMAX_IO_BASE+0 ; data port
     in al, dx
     cmp al, 0xff
-    loope .receive_status
+    jne .got_status
+    mov dx, XTMAX_IO_BASE+15; timeout port
+    in al, dx
+    test al, al
+    jnz .error
+    jmp .receive_status
+.got_status:
 %ifdef DEBUG_IO
     push ax
     mov ax, sd_status_msg
@@ -647,15 +662,20 @@ cpu 8086
     mov ax, wait_msg
     call print_string
 %endif
-    mov cx, 50000           ; timeout (50ms)
-    jmp .receive_finish_no_delay
+    mov dx, XTMAX_IO_BASE+15; timeout port
+    mov al, 25              ; 250 ms
+    out dx, al
 .receive_finish:
-    call delay_us
-.receive_finish_no_delay:
+    mov dx, XTMAX_IO_BASE+0 ; data port
     in al, dx
     test al, al
-    loope .receive_finish
-    jz .error
+    jnz .got_finish
+    mov dx, XTMAX_IO_BASE+15; timeout port
+    in al, dx
+    test al, al
+    jnz .error
+    jmp .receive_finish
+.got_finish:
 %ifdef DEBUG_IO
     mov ax, sd_idle_msg
     call print_string
@@ -671,7 +691,7 @@ cpu 8086
 %endif
 .success:
 .deassert_cs1:
-    mov dx, 0x282           ; chip select port
+    mov dx, XTMAX_IO_BASE+2 ; chip select port
     mov al, 1               ; deassert chip select
     out dx, al
 .return1:
@@ -684,7 +704,7 @@ cpu 8086
     jmp succeeded
 .error:
 .deassert_cs2:
-    mov dx, 0x282           ; chip select port
+    mov dx, XTMAX_IO_BASE+2 ; chip select port
     mov al, 1               ; deassert chip select
     out dx, al
 .return2:
@@ -940,24 +960,27 @@ init_sd:
     mov ax, ROM_SEGMENT
     mov ds, ax
 %endif
-    mov dx, 0x282           ; chip select port
+    mov dx, XTMAX_IO_BASE+2 ; chip select port
     mov al, 1               ; deassert chip select
-    out dx, al
-    xor cx, cx
-    mov dx, 1000            ; microseconds
-    mov ah, 0x86            ; wait
-    int 0x15
-    mov dx, 0x280           ; data port
+    mov dx, XTMAX_IO_BASE+0 ; data port
     mov al, 0xff
-    mov cx, 80              ; send 80 clock cycles
+    mov cx, 10              ; send 80 clock cycles
 .synchronize:
     out dx, al
     loop .synchronize
+.delay:
+    out dx, al
+    mov cx, 0x0001
+    mov dx, 0x86a0          ; 0x186a0 = 100 ms
+    mov ah, 0x86            ; wait
+    int 0x15
 .assert_cs:
-    mov dx, 0x282           ; chip select port
+    mov dx, XTMAX_IO_BASE+2 ; chip select port
     mov al, 0               ; assert chip select
     out dx, al
 .cmd0:
+    mov bx, 10              ; retries
+.retry_cmd0:
 %ifdef DEBUG_IO
     mov ax, send_cmd0_msg
     call print_string
@@ -966,7 +989,16 @@ init_sd:
     mov cx, 1               ; response is 1 byte
     mov ah, 1               ; expect idle state
     call send_sd_init_cmd
-    jc .exit
+    jnc .cmd8
+.delay_retry_cmd0:
+    xor cx, cx
+    mov dx, 20000           ; microseconds
+    mov ah, 0x86            ; wait
+    int 0x15
+    dec bx
+    jnz .retry_cmd0
+    stc
+    jmp .exit
 .cmd8:
 %ifdef DEBUG_IO
     mov ax, send_cmd8_msg
@@ -988,22 +1020,22 @@ init_sd:
     mov cx, 1               ; response is 1 byte
     mov ah, 1               ; expect idle state
     call send_sd_init_cmd
-    ; TODO: (older cards) on error, try CMD1
+    ; TODO: (older cards): handle v1 vs v2
     mov si, acmd41
     mov cx, 1               ; response is 1 byte
     mov ah, 0               ; expect ready state
     call send_sd_init_cmd
     jnc .exit
-    pushf
+.delay_retry_acmd41:
     xor cx, cx
-    mov dx, 1000            ; microseconds
+    mov dx, 20000           ; microseconds
     mov ah, 0x86            ; wait
     int 0x15
-    popf
     dec bx
     jnz .retry_acmd41
-    ; TODO: (older cards) send CMD16 to set block size
+    stc
 .exit:
+    ; TODO: (older cards): retrieve SDHC flag
     pop si
     pop dx
     pop cx
@@ -1034,7 +1066,7 @@ init_sd:
 ;      FL = <TRASH>
 ;
 send_sd_init_cmd:
-    mov dx, 0x280           ; data port
+    mov dx, XTMAX_IO_BASE+0 ; data port
 .settle_before:
     mov al, 0xff
     out dx, al
@@ -1083,7 +1115,7 @@ acmd41      db  0x69, 0x40, 0x00, 0x00, 0x00, 0x01
 ;      FL = <TRASH>
 ;
 send_sd_read_write_cmd:
-    mov dx, 0x280           ; data port
+    mov dx, XTMAX_IO_BASE+0 ; data port
     push ax
 .settle_before:
     mov al, 0xff
@@ -1112,21 +1144,6 @@ send_sd_read_write_cmd:
 ;
 ; General utilities
 ;
-
-;
-; Wait 1 microseconds.
-; out: AX = <TRASH>
-;      FL = <TRASH>
-delay_us:
-    push cx
-    push dx
-    xor cx, cx
-    mov dx, 1               ; microseconds
-    mov ah, 0x86            ; wait
-    int 0x15
-    pop dx
-    pop cx
-    ret
 
 %include "utils.inc"
 
