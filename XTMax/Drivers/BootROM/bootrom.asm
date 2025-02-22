@@ -10,6 +10,7 @@ cpu 8086    ; ensure we remain compatible with 8086
 ;%define DEBUG
 ;%define DEBUG_IO
 ;%define EXTRA_DEBUG
+;%define DEBUG_PRINT_SCREEN
 
 ;
 ; The base I/O port for the XTMAX SD Card.
@@ -201,6 +202,17 @@ entry:
     mov es:[0x18*4+2], ax   ; store segment
     mov ax, int18h_entry
     mov es:[0x18*4], ax     ; store offset
+%endif
+
+%ifdef DEBUG_PRINT_SCREEN
+;
+; Install our BIOS INT5h hook into the interrupt vector table.
+;
+.install_5h_vector:
+    mov ax, ROM_SEGMENT
+    mov es:[0x5*4+2], ax    ; store segment
+    mov ax, int5h_entry
+    mov es:[0x5*4], ax      ; store offset
 %endif
 
 .skip:
@@ -1281,6 +1293,75 @@ send_sd_read_write_cmd:
 ;
 
 %include "utils.inc"
+
+%ifdef DEBUG_PRINT_SCREEN
+;
+; INT 5h entry point.
+;
+int5h_entry:
+    push bp
+    push ax
+    push cx
+    push ds
+    push si
+    mov bp, sp
+;
+; Print original INT16h return address.
+;
+; Addresses depend on the BIOS INT16h handler. Here is a reference for IBM XT and PS/2 BIOS:
+;
+;       (This handler)      IBM XT      IBM PS/2
+; 00        SI
+; 02        DS
+; 04        CX
+; 06        AX
+; 08        BP
+; 10        IP
+; 12        CS
+; 14        FL
+; 16                        ES          BP
+; 18                        DS          ES
+; 20                        DI          DS
+; 22                        SI          DI
+; 24                        DX          SI
+; 26                        CX          DX
+; 28                        BX          CX
+; 30                        AX          BX
+; 32                        IP          AX
+; 34                        CS          BP
+; 36                        FL          IP
+; 38                                    CS
+; 40                                    FL
+;
+    mov ax, ss:[bp+38]
+    mov ds, ax
+    call print_hex
+    mov ax, colon
+    call print_string
+    mov ax, ss:[bp+36]
+    mov si, ax
+    call print_hex
+    mov ax, newline
+    call print_string
+;
+; Dump code at the return site.
+;
+    mov cx, 16
+.dump:
+    lodsw
+    call print_hex
+    mov ax, space
+    call print_string
+    loop .dump
+    mov ax, newline
+    call print_string
+    pop si
+    pop ds
+    pop cx
+    pop ax
+    pop bp
+    iret
+%endif
 
 %ifdef DEBUG
 debug_handler:
